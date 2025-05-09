@@ -14,7 +14,7 @@ def create_app():
 
     # create db
     with app.app_context():
-        from models import User  # now safe
+        from models import User 
         db.create_all()
 
     # import bps
