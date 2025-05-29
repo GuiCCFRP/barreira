@@ -3,9 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>PDF Manager | Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <h1>NIGA</h1>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">
+                <i class="fas fa-file-pdf"></i>
+                <h1>PDF Manager</h1>
+            </div>
+            
+            <div class="user-info">
+                <div class="avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-details">
+                    <span class="username">{{ user }}</span>
+                    <a href="{{ url_for('auth.logout') }}" class="logout">Logout</a>
+                </div>
+            </div>
+            
+            <nav class="nav-links">
+                <a href="#" class="active"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="#"><i class="fas fa-history"></i> History</a>
+                <a href="#"><i class="fas fa-cog"></i> Settings</a>
+            </nav>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="upload-section">
+                <h2>Upload PDF</h2>
+                
+                <!-- Flash messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="flash-messages">
+                            {% for category, message in messages %}
+                                <div class="flash {{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+                
+                <div class="upload-card" id="drop-area">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>Drag & Drop your PDF</h3>
+                    <p>or</p>
+                    <label for="file-input" class="browse-btn">Browse Files</label>
+                    <input type="file" id="file-input" name="file" accept=".pdf" hidden>
+                    <div class="file-info" id="file-info"></div>
+                </div>
+                
+                <form id="upload-form" action="{{ url_for('upload.upload_file') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="file-name" id="file-name">
+                    <button type="submit" class="upload-btn" id="submit-btn" disabled>Process PDF</button>
+                </form>
+            </div>
+            
+            <div class="history-section">
+                <div class="section-header">
+                    <h2>Recent Uploads</h2>
+                    <a href="#" class="view-all">View All</a>
+                </div>
+                
+                {% if history %}
+                <div class="history-items">
+                    {% for entry in history %}
+                    <div class="history-item">
+                        <div class="file-icon">
+                            <i class="fas fa-file-pdf"></i>
+                        </div>
+                        <div class="file-details">
+                            <span class="filename">{{ entry.filename }}</span>
+                            <span class="upload-date">{{ entry.created_at.strftime('%b %d, %Y %I:%M %p') }}</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="action-btn view-btn" title="View">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <button class="action-btn delete-btn" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-history">
+                    <i class="fas fa-inbox"></i>
+                    <p>No upload history yet</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='upload.js') }}"></script>
 </body>
 </html>
