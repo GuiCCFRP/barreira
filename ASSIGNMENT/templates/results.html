@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Results | PDF Manager</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">
+                <i class="fas fa-file-pdf"></i>
+                <h1>PDF Manager</h1>
+            </div>
+            
+            <div class="user-info">
+                <div class="avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-details">
+                    <span class="username">{{ user }}</span>
+                    <a href="{{ url_for('auth.logout') }}" class="logout">Logout</a>
+                </div>
+            </div>
+            
+            <nav class="nav-links">
+                <a href="{{ url_for('upload.index') }}"><i class="fas fa-home"></i> Dashboard</a>
+                <a href="#" class="active"><i class="fas fa-eye"></i> Results</a>
+                <a href="#"><i class="fas fa-history"></i> History</a>
+                <a href="#"><i class="fas fa-cog"></i> Settings</a>
+            </nav>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="results-header">
+                <h2><i class="fas fa-chart-line"></i> PDF Analysis Results</h2>
+                <div class="file-info">
+                    <span class="filename">{{ filename }}</span>
+                    <span class="total-segments">{{ segments|length }} segments found</span>
+                </div>
+            </div>
+
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash {{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <div class="results-section">
+                <!-- Sections (Large Font) -->
+                <div class="structure-group">
+                    <h3><i class="fas fa-heading"></i> Sections (Large Font - ~28pt)</h3>
+                    <div class="structure-content">
+                        {% if structure.newsession %}
+                            {% for text in structure.newsession %}
+                            <div class="structure-item newsession">
+                                <div class="item-content">{{ text }}</div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                        <div class="no-items">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No large font sections found</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Subsections (Medium Font) -->
+                <div class="structure-group">
+                    <h3><i class="fas fa-heading"></i> Subsections (Medium Font - ~18pt)</h3>
+                    <div class="structure-content">
+                        {% if structure.subsession %}
+                            {% for text in structure.subsession %}
+                            <div class="structure-item subsession">
+                                <div class="item-content">{{ text }}</div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                        <div class="no-items">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No medium font subsections found</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Content (Regular Font) -->
+                <div class="structure-group">
+                    <h3><i class="fas fa-align-left"></i> Content (Regular Font - ~12pt)</h3>
+                    <div class="structure-content content-preview">
+                        {% if structure.content %}
+                            {% for text in structure.content[:10] %}
+                            <div class="structure-item content">
+                                <div class="item-content">{{ text }}</div>
+                            </div>
+                            {% endfor %}
+                            {% if structure.content|length > 10 %}
+                            <div class="show-more">
+                                <button class="btn-show-more" onclick="toggleContent()">
+                                    <i class="fas fa-chevron-down"></i> Show {{ structure.content|length - 10 }} more items
+                                </button>
+                            </div>
+                            <div class="hidden-content" style="display: none;">
+                                {% for text in structure.content[10:] %}
+                                <div class="structure-item content">
+                                    <div class="item-content">{{ text }}</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        {% else %}
+                        <div class="no-items">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No regular content found</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Raw Data Section (Collapsible) -->
+            <div class="raw-data-section">
+                <h3>
+                    <button class="collapsible-header" onclick="toggleRawData()">
+                        <i class="fas fa-code"></i> Raw Segments Data
+                        <i class="fas fa-chevron-down toggle-icon"></i>
+                    </button>
+                </h3>
+                <div class="raw-data-container" style="display: none;">
+                    <div class="table-container">
+                        <table class="segments-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Font Size</th>
+                                    <th>Font Name</th>
+                                    <th>Text Content</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for segment in segments %}
+                                <tr>
+                                    <td class="page-num">{{ segment.page or 'N/A' }}</td>
+                                    <td class="font-size">{{ segment.size|round(1) }}pt</td>
+                                    <td class="font-name">{{ segment.font or 'Unknown' }}</td>
+                                    <td class="text-content">{{ segment.text[:100] }}{% if segment.text|length > 100 %}...{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <a href="{{ url_for('upload.index') }}" class="btn btn-back">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+                <button class="btn btn-primary" id="generate-latex" data-filename="{{ filename.replace('.pdf', '.json') }}">
+                    <i class="fas fa-file-code"></i> Generate LaTeX
+                </button>
+                <button class="btn btn-download" id="download-latex" style="display: none;">
+                    <i class="fas fa-download"></i> Download LaTeX
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LaTeX Modal -->
+    <div id="latex-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-code"></i> Generated LaTeX</h3>
+                <button class="modal-close" onclick="closeLatexModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="latex-content" readonly></textarea>
+                <div class="modal-actions">
+                    <button class="btn btn-primary" onclick="copyLatex()">
+                        <i class="fas fa-copy"></i> Copy to Clipboard
+                    </button>
+                    <button class="btn btn-secondary" onclick="downloadLatex()">
+                        <i class="fas fa-download"></i> Download as .tex
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let latexContent = '';
+        let latexFilename = '';
+
+        // Toggle content visibility
+        function toggleContent() {
+            const hiddenContent = document.querySelector('.hidden-content');
+            const showMoreBtn = document.querySelector('.btn-show-more');
+            
+            if (hiddenContent.style.display === 'none') {
+                hiddenContent.style.display = 'block';
+                showMoreBtn.innerHTML = '<i class="fas fa-chevron-up"></i> Show less';
+            } else {
+                hiddenContent.style.display = 'none';
+                showMoreBtn.innerHTML = '<i class="fas fa-chevron-down"></i> Show more items';
+            }
+        }
+
+        // Toggle raw data visibility
+        function toggleRawData() {
+            const container = document.querySelector('.raw-data-container');
+            const icon = document.querySelector('.toggle-icon');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                container.style.display = 'none';
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Generate LaTeX
+        document.getElementById('generate-latex').addEventListener('click', async function() {
+            const filename = this.dataset.filename;
+            const btn = this;
+            
+            // Show loading state
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch(`{{ url_for('upload.generate_latex_route', filename='') }}${filename}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    latexContent = data.latex;
+                    latexFilename = data.filename;
+                    
+                    document.getElementById('latex-content').value = latexContent;
+                    document.getElementById('latex-modal').style.display = 'flex';
+                    
+                    // Show download button
+                    document.getElementById('download-latex').style.display = 'inline-block';
+                } else {
+                    throw new Error(data.error || 'Failed to generate LaTeX');
+                }
+            } catch (error) {
+                alert('Error generating LaTeX: ' + error.message);
+            } finally {
+                // Reset button
+                btn.innerHTML = '<i class="fas fa-file-code"></i> Generate LaTeX';
+                btn.disabled = false;
+            }
+        });
+
+        // Modal functions
+        function closeLatexModal() {
+            document.getElementById('latex-modal').style.display = 'none';
+        }
+
+        function copyLatex() {
+            const textarea = document.getElementById('latex-content');
+            textarea.select();
+            document.execCommand('copy');
+            
+            // Show feedback
+            const btn = event.target.closest('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+            }, 2000);
+        }
+
+        function downloadLatex() {
+            const blob = new Blob([latexContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = latexFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('latex-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLatexModal();
+            }
+        });
+    </script>
+</body>
+</html>
