@@ -2,8 +2,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropArea = document.getElementById('drop-area');
     const fileInput = document.getElementById('file-input');
     const fileInfo = document.getElementById('file-info');
-    const fileNameInput = document.getElementById('file-name');
     const submitBtn = document.getElementById('submit-btn');
+    
+    // Store the selected file
+    let selectedFile = null;
     
     // Prevent default drag behaviors
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -42,7 +44,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleDrop(e) {
         const dt = e.dataTransfer;
         const files = dt.files;
-        handleFiles({target: {files}});
+        
+        // FIXED: Create a FileList-like object and assign to file input
+        if (files.length > 0) {
+            // Transfer the dropped file to the file input
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(files[0]);
+            fileInput.files = dataTransfer.files;
+            
+            // Trigger the change event
+            handleFiles({target: {files: files}});
+        }
     }
     
     function handleFiles(e) {
@@ -50,9 +62,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (files.length > 0) {
             const file = files[0];
+            selectedFile = file;
             
-            // Validate file type
-            if (file.type === 'application/pdf') {
+            // Validate file type - Check both MIME type and extension
+            const isValidPDF = file.type === 'application/pdf' || 
+                              file.name.toLowerCase().endsWith('.pdf');
+            
+            if (isValidPDF) {
                 const fileName = sanitizeFilename(file.name);
                 
                 fileInfo.innerHTML = `
@@ -65,15 +81,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
                 
-                fileNameInput.value = fileName;
                 submitBtn.disabled = false;
                 dropArea.classList.add('file-selected');
             } else {
                 fileInfo.innerHTML = '<div class="error">Please select a PDF file</div>';
                 submitBtn.disabled = true;
+                selectedFile = null;
             }
         }
     }
+    
+    // ADDED: Form submission handler to ensure file is included
+    document.getElementById('upload-form').addEventListener('submit', function(e) {
+        // Double-check that we have a file
+        if (!fileInput.files || fileInput.files.length === 0) {
+            e.preventDefault();
+            alert('Please select a PDF file first');
+            return false;
+        }
+        
+        // Optional: Add loading state
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+    });
     
     function sanitizeFilename(name) {
         return name.replace(/[^a-zA-Z0-9_.-]/g, '_');
