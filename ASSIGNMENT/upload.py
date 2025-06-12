@@ -1,11 +1,13 @@
 import os
 import json
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, jsonify, send_file
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from models import PdfHistory
 from extensions import db
 from pdf_extract import extract_font_segments, str_to_latex  
+
+
 
 def generate_latex(segments):
     """Generate LaTeX from segments using your existing str_to_latex function"""
@@ -216,3 +218,235 @@ def delete_file(history_id):
         current_app.logger.error(f"Error deleting file: {str(e)}")
         flash('Error deleting file', 'danger')
         return redirect(url_for('upload.index'))
+    
+@upload_bp.route('/generate-latex/<filename>', methods=['POST'])
+@login_required
+def generate_latex(filename):
+    # Get custom thresholds from form
+    section_threshold = float(request.form.get('section_threshold', 28))
+    subsection_threshold = float(request.form.get('subsection_threshold', 18))
+    content_threshold = float(request.form.get('content_threshold', 12))
+    
+    # Get the PDF path
+    pdf_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    
+    if not os.path.exists(pdf_path):
+        flash('PDF file not found', 'danger')
+        return redirect(url_for('upload.index'))
+    
+    try:
+        # Extract font segments
+        segments = extract_font_segments(pdf_path)
+        
+        # Convert to LaTeX
+        latex_code = str_to_latex(
+            segments,
+            section_threshold=section_threshold,
+            subsection_threshold=subsection_threshold,
+            content_threshold=content_threshold
+        )
+        
+        # Create a complete LaTeX document
+        full_latex = (
+            "\\documentclass{article}\n"
+            "\\usepackage[utf8]{inputenc}\n"
+            "\\usepackage{graphicx}\n"
+            "\\usepackage{amsmath}\n"
+            "\\usepackage{amssymb}\n"
+            "\\begin{document}\n\n" +
+            latex_code +
+            "\n\\end{document}"
+        )
+        
+        # Save to a file
+        tex_filename = filename.replace('.pdf', '.tex')
+        tex_path = os.path.join(current_app.config['UPLOAD_FOLDER'], tex_filename)
+        
+        with open(tex_path, 'w', encoding='utf-8') as f:
+            f.write(full_latex)
+        
+        # Store in database
+        pdf_entry = PdfHistory.query.filter_by(filename=filename, user_id=current_user.id).first()
+        if pdf_entry:
+            pdf_entry.latex_path = tex_filename
+            db.session.commit()
+        
+        # Redirect to preview page
+        return redirect(url_for('upload.latex_preview', filename=tex_filename))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error generating LaTeX: {str(e)}")
+        flash('Error generating LaTeX code', 'danger')
+        return redirect(url_for('upload.view_results', filename=filename.replace('.pdf', '.json')))
+
+@upload_bp.route('/latex-preview/<filename>')
+@login_required
+def latex_preview(filename):
+    tex_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    
+    if not os.path.exists(tex_path):
+        flash('LaTeX file not found', 'danger')
+        return redirect(url_for('upload.index'))
+    
+    try:
+        with open(tex_path, 'r', encoding='utf-8') as f:
+            latex_content = f.read()
+        
+        return render_template('latex_preview.html', 
+                              filename=filename,
+                              pdf_filename=filename.replace('.tex', '.pdf'),
+                              latex_content=latex_content)
+        
+    except Exception as e:
+        current_app.logger.error(f"Error loading LaTeX: {str(e)}")
+        flash('Error loading LaTeX content', 'danger')
+        return redirect(url_for('upload.index'))
+
+@upload_bp.route('/download-latex/<filename>')
+@login_required
+def download_latex(filename):
+    tex_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    return send_file(tex_path, as_attachment=True)
+
+@upload_bp.route('/history')
+@login_required
+def history():
+    # Get all history entries for the current user
+    history = PdfHistory.query.filter_by(user_id=current_user.id).order_by(PdfHistory.created_at.desc()).all()
+    return render_template('history.html', history=history)
+
+@upload_bp.route('/delete-entry/<int:entry_id>', methods=['POST'])
+@login_required
+def delete_entry(entry_id):
+    entry = PdfHistory.query.get_or_404(entry_id)
+    
+    # Verify ownership
+    if entry.user_id != current_user.id:
+        flash('You do not have permission to delete this entry', 'danger')
+        return redirect(url_for('upload.history'))
+    
+    try:
+        # Delete associated files
+        files_to_delete = []
+        
+        if entry.filename:
+            pdf_path = os.path.join(current_app.config['UPLOAD_FOLDER'], entry.filename)
+            if os.path.exists(pdf_path):
+                files_to_delete.append(pdf_path)
+        
+        if entry.json_path:
+            json_path = os.path.join(current_app.config['UPLOAD_FOLDER'], entry.json_path)
+            if os.path.exists(json_path):
+                files_to_delete.append(json_path)
+        
+        if entry.latex_path:
+            latex_path = os.path.join(current_app.config['UPLOAD_FOLDER'], entry.latex_path)
+            if os.path.exists(latex_path):
+                files_to_delete.append(latex_path)
+        
+        # Delete files
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                current_app.logger.error(f"Error deleting file {file_path}: {str(e)}")
+        
+        # Delete database entry
+        db.session.delete(entry)
+        db.session.commit()
+        
+        flash('Entry deleted successfully', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting entry: {str(e)}")
+        flash('Error deleting entry', 'danger')
+    
+    return redirect(url_for('upload.history'))
+
+@upload_bp.route('/download-pdf/<filename>')
+@login_required
+def download_pdf(filename):
+    pdf_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    
+    # Verify ownership
+    entry = PdfHistory.query.filter_by(filename=filename, user_id=current_user.id).first()
+    if not entry:
+        flash('File not found or you do not have permission', 'danger')
+        return redirect(url_for('upload.history'))
+    
+    if not os.path.exists(pdf_path):
+        flash('PDF file not found', 'danger')
+        return redirect(url_for('upload.history'))
+    
+    return send_file(pdf_path, as_attachment=True)
+
+@upload_bp.route('/history')
+@login_required
+def view_history():
+    history = PdfHistory.query.filter_by(user_id=current_user.id).order_by(PdfHistory.created_at.desc()).all()
+    return render_template('history.html', history=history)
+
+@upload_bp.route('/delete-entry/<int:entry_id>', methods=['POST'])
+@login_required
+def delete_history_entry(entry_id):
+    entry = PdfHistory.query.get_or_404(entry_id)
+    
+    # Verify ownership
+    if entry.user_id != current_user.id:
+        flash('You do not have permission to delete this entry', 'danger')
+        return redirect(url_for('upload.history'))
+    
+    try:
+        # Delete associated files
+        files_to_delete = []
+        
+        if entry.filename:
+            pdf_path = os.path.join(current_app.config['UPLOAD_FOLDER'], entry.filename)
+            if os.path.exists(pdf_path):
+                files_to_delete.append(pdf_path)
+        
+        if entry.json_path:
+            json_path = os.path.join(current_app.config['UPLOAD_FOLDER'], entry.json_path)
+            if os.path.exists(json_path):
+                files_to_delete.append(json_path)
+        
+        if entry.latex_path:
+            latex_path = os.path.join(current_app.config['UPLOAD_FOLDER'], entry.latex_path)
+            if os.path.exists(latex_path):
+                files_to_delete.append(latex_path)
+        
+        # Delete files
+        for file_path in files_to_delete:
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                current_app.logger.error(f"Error deleting file {file_path}: {str(e)}")
+        
+        # Delete database entry
+        db.session.delete(entry)
+        db.session.commit()
+        
+        flash('Entry deleted successfully', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting entry: {str(e)}")
+        flash('Error deleting entry', 'danger')
+    
+    return redirect(url_for('upload.history'))
+
+@upload_bp.route('/download-pdf/<filename>')
+@login_required
+def download_pdf(filename):
+    pdf_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    
+    # Verify ownership
+    entry = PdfHistory.query.filter_by(filename=filename, user_id=current_user.id).first()
+    if not entry:
+        flash('File not found or you do not have permission', 'danger')
+        return redirect(url_for('upload.history'))
+    
+    if not os.path.exists(pdf_path):
+        flash('PDF file not found', 'danger')
+        return redirect(url_for('upload.history'))
+    
+    return send_file(pdf_path, as_attachment=True)
